@@ -1,0 +1,18 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+sentence-transformers>=2.7.0
+numpy==1.24.3
+pydantic==2.4.2
+motor==3.3.2
+pymongo==4.6.0
+scikit-learn>=1.0.0
+# LangChain for model testing (compatible versions)
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-huggingface>=0.0.1
+# Qdrant vector database
+qdrant-client>=1.7.0
+# Additional dependencies (flexible versions)
+openai>=1.0.0
+transformers
+torch
