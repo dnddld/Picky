@@ -12,27 +12,24 @@ spring:
       client:
         registration:
           google:
-            client-id: ${89436861621-nkkljkj1to3m7j2dl3v4kde6pja9s5p7.apps.googleusercontent.com}
-            client-secret : ${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}
+            client-id: "89436861621-nkkljkj1to3m7j2dl3v4kde6pja9s5p7.apps.googleusercontent.com"
+            client-secret: "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"
             scope: openid, email, profile
             redirect-uri: "http://localhost:8080/login/oauth2/code/google"
         provider:
             google:
               issuer-uri: https://accounts.google.com
-  data:
-    redis:
-      host: localhost
-      port: 6379
+
 
 jwt:
-  secret: ${JWT_SECRET:please-change-me-to-32bytes-minimum-base64-or-plain}
+  secret: iQWWa9DnaANYkLCRPccRChAeuQt7owLnAwucLKCxR3A=
   issuer: picky
   access-token-validity-seconds: 1800
   refresh-token-validity-seconds: 1209600
 
 app:
   oauth2:
-    authorized-redirec-uris:
+    authorized-redirect-uris:
       - "http://localhost:5173/oauth2/redirect"
       - "chrome-extension://<YOUR_EXT_ID>/oauth2/redirect"
   cookie:
