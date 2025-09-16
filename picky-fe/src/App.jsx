@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from './lib/api';
 import Header from './components/Header';
 import Box from './components/Box';
 import Button from './components/Button';
@@ -34,10 +34,11 @@ const App = () => {
     const accessToken = localStorage.getItem('accessToken');
     if (accessToken) {
       try {
-        await axios.post('http://localhost:8080/api/auth/logout', {}, {
+        await api.post('/api/auth/logout', {}, {
           headers: {
             'Authorization': `Bearer ${accessToken}`
-          }
+          },
+          withCredentials: true
         });
       } catch (error) {
         console.error('Logout failed', error);
