@@ -34,7 +34,7 @@ spring:
             client-id: ${GOOGLE_OAUTH_CLIENT_ID}
             client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
             scope: openid, email, profile
-            redirect-uri: "http://localhost:8080/login/oauth2/code/google"
+            redirect-uri: "http://localhost:8080/login/oauth2/code/{registrationId}"
         provider:
           google:
             issuer-uri: https://accounts.google.com
@@ -45,3 +45,7 @@ jwt:
   issuer: picky
   access-token-validity-seconds: 1800
   refresh-token-validity-seconds: 1209600
+
+logging:
+  level:
+    com.c102.picky: DEBUG
