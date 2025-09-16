@@ -1,6 +1,6 @@
 """
 뉴스 요약 서비스
-KoBART 4bit 모델을 사용한 한국어 뉴스 요약
+KoBART-summary-v3 모델을 사용한 한국어 뉴스 요약
 """
 
 import logging
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class NewsSummarizationService:
     """뉴스 요약 서비스"""
 
-    def __init__(self, 
-                 model_name: str = "RichardErkhov/gangyeolkim_-_kobart-korean-summarizer-v2-4bits"):
+    def __init__(self,
+                 model_name: str = "EbanLee/kobart-summary-v3"):
         """
         Args:
             model_name: 사용할 요약 모델명
@@ -45,16 +45,14 @@ class NewsSummarizationService:
             if force_cpu or not torch.cuda.is_available():
                 model = AutoModelForSeq2SeqLM.from_pretrained(
                     self.model_name,
-                    load_in_4bit=True,
-                    device_map="cpu"
+                    torch_dtype=torch.float32
                 )
                 device = -1
                 logger.info("[요약 모델] CPU 모드로 로딩")
             else:
                 model = AutoModelForSeq2SeqLM.from_pretrained(
                     self.model_name,
-                    load_in_4bit=True,
-                    device_map="auto"
+                    torch_dtype=torch.float16
                 )
                 device = 0
                 logger.info("[요약 모델] GPU 모드로 로딩")
@@ -72,7 +70,7 @@ class NewsSummarizationService:
             error_msg = f"[요약 모델] 로딩 실패: {e}"
             logger.error(error_msg)
             self.pipe = None
-            raise RuntimeError(f"4bit 요약 모델 로딩 실패: {self.model_name}. 원인: {e}")
+            raise RuntimeError(f"요약 모델 로딩 실패: {self.model_name}. 원인: {e}")
 
     def summarize_single(self, text: str, max_length: int = 100, min_length: int = 30) -> Optional[str]:
         """단일 텍스트 요약"""
@@ -173,7 +171,7 @@ def get_summarization_service() -> NewsSummarizationService:
             logger.error(f"요약 서비스 초기화 실패: {e}")
             # 빈 서비스 객체 생성 (pipe=None 상태)
             _summarization_service = NewsSummarizationService.__new__(NewsSummarizationService)
-            _summarization_service.model_name = "RichardErkhov/gangyeolkim_-_kobart-korean-summarizer-v2-4bits"
+            _summarization_service.model_name = "EbanLee/kobart-summary-v3"
             _summarization_service.pipe = None
             _summarization_service.executor = ThreadPoolExecutor(max_workers=4)
     return _summarization_service

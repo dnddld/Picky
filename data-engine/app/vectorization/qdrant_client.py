@@ -85,7 +85,7 @@ class QdrantService:
             payload = {
                 **metadata,
                 "created_at": datetime.utcnow().isoformat(),
-                "embedding_model": "text-embedding-3-small",
+                "embedding_model": "gms-text-embedding-3-small",
                 "collection": collection_name
             }
             
@@ -114,7 +114,7 @@ class QdrantService:
             "domain": data.get("domain"),
             "data_version": data.get("dataVersion", "2.0"),
             "created_at": datetime.utcnow().isoformat(),
-            "embedding_model": "text-embedding-3-small",
+            "embedding_model": "gms-text-embedding-3-small",
             
             # 기본 필드들
             "time_category": data.get("timeCategory"),
@@ -161,7 +161,7 @@ class QdrantService:
             payload = {
                 **metadata,
                 "created_at": datetime.utcnow().isoformat(),
-                "embedding_model": "HiEmbed_base_onnx_v1",  # 모델명 업데이트
+                "embedding_model": "gms-text-embedding-3-small",  # 모델명 업데이트
                 "collection": collection_name
             }
 
