@@ -49,3 +49,13 @@ jwt:
 logging:
   level:
     com.c102.picky: DEBUG
+
+app:
+  cookie:
+    name: ${APP_COOKIE_NAME}
+    domain: ${APP_COOKIE_DOMAIN}
+    path: ${APP_COOKIE_PATH}
+    http-only: ${APP_COOKIE_HTTP_ONLY}
+    secure: ${APP_COOKIE_SECURE}
+    same-site: ${APP_COOKIE_SAME_SITE}
+    max-age: ${APP_COOKIE_MAX_AGE}
