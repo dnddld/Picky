@@ -11,7 +11,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update   # update create
+      ddl-auto: create-drop   # update create
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
@@ -34,7 +34,7 @@ spring:
             client-id: ${GOOGLE_OAUTH_CLIENT_ID}
             client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
             scope: openid, email, profile
-            redirect-uri: "http://localhost:8080/login/oauth2/code/google"
+            redirect-uri: "http://localhost:8080/login/oauth2/code/{registrationId}"
         provider:
           google:
             issuer-uri: https://accounts.google.com
@@ -46,7 +46,19 @@ jwt:
   access-token-validity-seconds: 1800
   refresh-token-validity-seconds: 1209600
 
+logging:
+  level:
+    com.c102.picky: DEBUG
+
 app:
+  cookie:
+    name: ${APP_COOKIE_NAME}
+    domain: ${APP_COOKIE_DOMAIN}
+    path: ${APP_COOKIE_PATH}
+    http-only: ${APP_COOKIE_HTTP_ONLY}
+    secure: ${APP_COOKIE_SECURE}
+    same-site: ${APP_COOKIE_SAME_SITE}
+    max-age: ${APP_COOKIE_MAX_AGE}
   seed:
     csv-path: ${APP_SEED_CSV_PATH:/app/data/quiz_wiki_all.csv}
     line-ending: CRLF
