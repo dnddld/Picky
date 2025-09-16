@@ -8,11 +8,12 @@ services:
       - "8000:8000"
     environment:
       - MONGODB_URL=${MONGODB_URL}
+      - MYSQL_URL=${MYSQL_URL}
       - QDRANT_HOST=${QDRANT_HOST}
       - QDRANT_PORT=${QDRANT_PORT}
       - DEBUG=${DEBUG}
     networks:
-      - picky-be_picky-network
+      - picky-network
     depends_on:
       - qdrant
     restart: unless-stopped
@@ -26,12 +27,12 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
-      - picky-be_picky-network
+      - picky-network
     restart: unless-stopped
 
 volumes:
   qdrant_data:
 
 networks:
-  picky-be_picky-network:
+  picky-network:
     external: true
