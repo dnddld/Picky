@@ -5,13 +5,13 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:db}:3306/picky?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    url: jdbc:mysql://${DB_HOST:db}:3306/picky?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowLoadLocalInfile=true
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
 
   jpa:
     hibernate:
-      ddl-auto: update   # update create
+      ddl-auto: create-drop   # update create
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
@@ -50,7 +50,19 @@ logging:
   level:
     com.c102.picky: DEBUG
 
-app:
+app:      
+  cookie:
+    name: ${APP_COOKIE_NAME}
+    domain: ${APP_COOKIE_DOMAIN}
+    path: ${APP_COOKIE_PATH}
+    http-only: ${APP_COOKIE_HTTP_ONLY}
+    secure: ${APP_COOKIE_SECURE}
+    same-site: ${APP_COOKIE_SAME_SITE}
+    max-age: ${APP_COOKIE_MAX_AGE}
   seed:
+    csv-path: ${APP_SEED_CSV_PATH:/app/data/quiz_wiki_all.csv}
+    line-ending: CRLF
+    enabled: true
+    force: false  # true -> TRUNCATE 후 강제 재적재
     categories:
       enabled: true
