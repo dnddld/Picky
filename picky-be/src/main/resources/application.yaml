@@ -49,3 +49,8 @@ jwt:
 logging:
   level:
     com.c102.picky: DEBUG
+
+app:
+  seed:
+    categories:
+      enabled: true
