@@ -1,26 +1,27 @@
+import asyncio
 import os
 import sys
 import urllib.request
 import urllib.parse
 import json
 import datetime
-import hashlib
 import requests
 from bs4 import BeautifulSoup
-from openai import OpenAI
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import re
+from email.utils import parsedate_to_datetime
+
+# 프로젝트 루트를 Python path에 추가
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from news.summarization import get_summarization_service
+from news.vectorizer import NewsVectorizer
 
 # ====== 환경 설정 ======
 load_dotenv()
 client_id = os.environ.get('CLIENT_ID')
 client_secret = os.environ.get('CLIENT_SECRET')
-client = OpenAI(
-    api_key=os.environ.get('GMS_KEY'),
-    base_url="https://gms.ssafy.io/gmsapi/api.openai.com/v1"
-)
 
 CATEGORIES = {
     "정치": ["정부", "국회", "대통령", "총리", "장관", "선거", "정당", "외교", "국방", "안보"],
@@ -73,8 +74,8 @@ def clean_body(text):
     text = re.sub(r'\S+@\S+', '', text)
     # 2. URL 제거 (http/https 포함)
     text = re.sub(r'http\S+|www\S+', '', text)
-    # 3. 제보/출처/구독 안내/광고/댓글 문구 제거
-    text = re.sub(r'^[▶☞■▷※\-\+].*$', '', text, flags=re.MULTILINE)   # 기호로 시작하는 줄
+    # 3. 제보/출처/구독 안내/광고/댓글 문구 제거 (특수문자 포함)
+    text = re.sub(r'^[▶☞■▷※◆◇●○▲△□▣\-\+].*$', '', text, flags=re.MULTILINE)   # 기호로 시작하는 줄
     text = re.sub(r'^\[사진 출처.*$', '', text, flags=re.MULTILINE)
     text = re.sub(r'^■ 제보하기.*$', '', text, flags=re.MULTILINE)
     text = re.sub(r'네이버.*구독.*$', '', text, flags=re.MULTILINE)
@@ -109,9 +110,13 @@ def clean_body(text):
     text = re.sub(r'^\s*바로가기.*$', '', text, flags=re.MULTILINE)
     text = re.sub(r'^\s*가$', '', text, flags=re.MULTILINE)  # '가' 단독 라인
 
-    # 9. 공백 정리
-    text = re.sub(r'\n+', '\n', text).strip()
+    # 9. JSON 파싱 문제를 일으키는 특수 Unicode 문자 제거
+    text = re.sub(r'[◆◇●○▲△□▣♦♧♠♥◯◎◐◑]', '', text)  # Unicode 도형 기호들
+    text = re.sub(r'[⚫⚪⬛⬜]', '', text)  # 기타 기하학적 도형
+    text = re.sub(r'[✓✔✕✖✗]', '', text)  # 체크/X 마크들
 
+    # 10. 공백 정리
+    text = re.sub(r'\n+', '\n', text).strip()
 
     return text
 
@@ -148,53 +153,202 @@ def get_body(url):
         print("본문 추출 실패:", e)
         return ""
 
-# ====== 요약 ======
-def summarize(text):
-    if not text:
-        return ""
-    prompt = f"다음 기사를 3줄로 요약해 주세요:\n\n{text}"
+# ====== 요약 기능 (KoBART 모델) ======
+# 전역 모델 서비스 및 Lock
+_summarization_service = None
+_service_lock = threading.Lock()
+
+def get_global_summarization_service():
+    """Thread-safe 싱글톤 요약 서비스"""
+    global _summarization_service
+    if _summarization_service is None:
+        with _service_lock:
+            if _summarization_service is None:
+                print("🔄 요약 모델 전역 초기화 중...")
+                _summarization_service = get_summarization_service()
+                if _summarization_service.pipe:
+                    print("✅ 요약 모델 전역 초기화 완료!")
+                else:
+                    print("❌ 요약 모델 초기화 실패!")
+    return _summarization_service
+
+def summarize_text(text):
+    """Thread-safe KoBART 모델 요약"""
+    if not text or len(text.strip()) < 50:
+        return "요약할 내용이 부족합니다."
+
+    # 텍스트 길이에 따른 동적 길이 조정
+    text_len = len(text.strip())
+    if text_len < 200:
+        max_length = min(text_len // 2, 80)
+        min_length = min(max_length // 2, 30)
+    else:
+        max_length = min(text_len // 3, 150)
+        min_length = min(max_length // 3, 50)
+
     try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role":"user","content":prompt}],
-            temperature=0.3
-        )
-        return resp.choices[0].message.content.strip()
+        # Thread-safe 모델 접근
+        with _service_lock:
+            summarization_service = get_global_summarization_service()
+            if not summarization_service or not summarization_service.pipe:
+                return "요약 모델이 로드되지 않았습니다."
+
+            summary = summarization_service.summarize_single(
+                text,
+                max_length=max_length,
+                min_length=min_length
+            )
+
+        return summary if summary else "요약 실패"
     except Exception as e:
-        print("요약 실패:", e)
-        return ""
+        print(f"요약 오류: {e}")
+        return f"요약 오류: {str(e)[:30]}..."
 
 # ====== 대분류에 따른 중분류 병렬 처리 =====
 def process_keyword(category, keyword):
+    """카테고리별 키워드로 뉴스 수집 및 요약"""
     items = get_news(keyword, start=1, display=5)
-    bodies = [get_body(item["link"]) for item in items]
     results = []
-    for item, body in zip(items, bodies):
+
+    for item in items:
+        print(f"[{category}-{keyword}] 처리 중: {clean_title(item['title'])}")
+
+        # 본문 추출
+        body = get_body(item["link"])
+
+        # 요약 생성
+        summary = ""
+        if body:
+            print(f"  → 요약 생성 중... (본문 길이: {len(body)}자)")
+            summary = summarize_text(body)
+            print(f"  → 요약 완료: {summary[:50]}...")
+        else:
+            print(f"  → 본문 추출 실패")
+
+        published_at = parse_pub_date(item.get("pubDate"))
+
         results.append({
             "category": category,
             "keyword": keyword,
-            "title": clean_title(item["title"]), 
+            "title": clean_title(item["title"]),
             "link": item["link"],
-            "body": body
+            "originallink": item.get("originallink"),
+            "body": body,
+            "summary": summary,
+            "created_at": datetime.datetime.now().isoformat(),
+            "published_at": published_at
         })
+
     return results
+
+
+def parse_pub_date(raw_pubdate):
+    """네이버 API pubDate 문자열을 ISO8601로 변환"""
+    if not raw_pubdate:
+        return None
+
+    try:
+        dt = parsedate_to_datetime(raw_pubdate)
+        if dt.tzinfo:
+            return dt.isoformat()
+        return dt.replace(tzinfo=datetime.timezone.utc).isoformat()
+    except Exception:
+        return raw_pubdate
+
+# ====== JSON 저장 ======
+def save_to_json(all_results, filename=None):
+    """수집된 뉴스 데이터를 JSON 파일로 저장"""
+    if filename is None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"news_crawled_{timestamp}_2.json"
+
+    json_data = {
+        "created_at": datetime.datetime.now().isoformat(),
+        "total_count": len(all_results),
+        "categories": list(set(r['category'] for r in all_results)),
+        "news": all_results
+    }
+
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, ensure_ascii=False, indent=2)
+        print(f"✅ JSON 저장 완료: {filename}")
+        print(f"📊 총 {len(all_results)}개 뉴스 저장됨")
+        return filename
+    except Exception as e:
+        print(f"❌ JSON 저장 실패: {e}")
+        return None
 
 # ====== 메인 실행 ======
 def main():
+    print("🤖 뉴스 크롤링 및 요약 시작!")
+    print(f"📂 처리 카테고리: {len(CATEGORIES)}개")
+    print("=" * 60)
+
+    all_results = []  # 전체 결과 저장용
+
+    # 모델 사전 로딩 (메인 스레드에서)
+    print("\n🔄 요약 모델 사전 로딩 중...")
+    get_global_summarization_service()
+
+    # 전체 카테고리 처리
     for category, keywords in CATEGORIES.items():
-        print(f"\n======[{category}] news =====")
-        with ThreadPoolExecutor(max_workers=10) as executor:  # 중분류 병렬 실행
+        print(f"\n📰 [{category}] 카테고리 처리 중...")
+        category_results = []
+
+        # EC2 t2.xlarge 다중 서비스 환경 최적화 (Backend, DB 등과 리소스 공유)
+        optimal_workers = min(2, len(keywords))  # 보수적 설정
+        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
+            print(f"  🚀 {len(keywords)}개 키워드를 {optimal_workers}개 스레드로 병렬 처리")
+
             futures = [executor.submit(process_keyword, category, kw) for kw in keywords]
 
-            for future in as_completed(futures):
+            for i, future in enumerate(as_completed(futures), 1):
                 try:
                     results = future.result()
-                    for r in results:
-                        print(f"[{r['category']} - {r['keyword']}] {r['title']}")
-                        print(f"링크: {r['link']}")
-                        print(f"본문: {r['body']}...\n")
+                    category_results.extend(results)
+                    all_results.extend(results)
+                    print(f"    ✅ [{i}/{len(keywords)}] 완료: {len(results)}개 뉴스")
                 except Exception as e:
-                    print("에러 발생:", e)
+                    print(f"    ❌ [{i}/{len(keywords)}] 에러: {e}")
+
+        print(f"  📊 [{category}] 완료: {len(category_results)}개 뉴스 수집")
+
+    print(f"\n🎉 전체 뉴스 크롤링 및 요약 완료!")
+    print(f"📊 총 수집된 뉴스: {len(all_results)}개")
+
+    # 최종 JSON 저장
+    print(f"\n{'=' * 60}")
+    print("💾 JSON 파일 저장 중...")
+    saved_file = save_to_json(all_results)
+
+    if saved_file:
+        print(f"\n🎉 크롤링 완료!")
+        print(f"📄 저장 파일: {saved_file}")
+        print(f"📊 총 수집: {len(all_results)}개 뉴스")
+
+        # 카테고리별 통계
+        category_stats = {}
+        for result in all_results:
+            cat = result['category']
+            category_stats[cat] = category_stats.get(cat, 0) + 1
+
+        print("\n📈 카테고리별 수집 현황:")
+        for cat, count in category_stats.items():
+            print(f"  - {cat}: {count}개")
+
+        print("\n🧮 뉴스 벡터화 및 Qdrant 저장을 시작합니다...")
+        try:
+            vectorizer = NewsVectorizer()
+            stats = asyncio.run(vectorizer.vectorize_and_save_batch(all_results))
+            print(
+                f"✅ Qdrant 저장 완료: 총 {stats['embedded']}개 벡터 저장"
+                f" (요청 {stats['processed']}개, 스킵 {stats['skipped']}개)"
+            )
+        except Exception as exc:
+            print(f"❌ 뉴스 벡터화 실패: {exc}")
+    else:
+        print("❌ 저장 실패!")
 
 if __name__ == "__main__":
     main()
