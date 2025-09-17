@@ -41,19 +41,15 @@ class NewsSummarizationService:
             # 토크나이저 로드
             tokenizer = AutoTokenizer.from_pretrained(self.model_name)
 
-            # 디바이스별 모델 로드
+            # 모델 로드 후 디바이스/정밀도 설정 (torch_dtype 인자 사용 안 함)
+            model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+
             if force_cpu or not torch.cuda.is_available():
-                model = AutoModelForSeq2SeqLM.from_pretrained(
-                    self.model_name,
-                    torch_dtype=torch.float32
-                )
+                model = model.to(dtype=torch.float32)
                 device = -1
                 logger.info("[요약 모델] CPU 모드로 로딩")
             else:
-                model = AutoModelForSeq2SeqLM.from_pretrained(
-                    self.model_name,
-                    torch_dtype=torch.float16
-                )
+                model = model.to(device=torch.device("cuda:0"), dtype=torch.float16)
                 device = 0
                 logger.info("[요약 모델] GPU 모드로 로딩")
 
