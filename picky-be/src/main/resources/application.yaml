@@ -50,7 +50,9 @@ logging:
   level:
     com.c102.picky: DEBUG
 
-app:      
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
   cookie:
     name: ${APP_COOKIE_NAME}
     domain: ${APP_COOKIE_DOMAIN}
