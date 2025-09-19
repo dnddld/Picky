@@ -34,7 +34,7 @@ spring:
             client-id: ${GOOGLE_OAUTH_CLIENT_ID}
             client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
             scope: openid, email, profile
-            redirect-uri: "http://localhost:8080/login/oauth2/code/{registrationId}"
+            redirect-uri: "${GOOGLE_OAUTH_BASE_URL}/login/oauth2/code/{registrationId}"
         provider:
           google:
             issuer-uri: https://accounts.google.com
@@ -50,7 +50,9 @@ logging:
   level:
     com.c102.picky: DEBUG
 
-app:      
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
   cookie:
     name: ${APP_COOKIE_NAME}
     domain: ${APP_COOKIE_DOMAIN}
