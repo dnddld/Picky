@@ -11,7 +11,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create  # update create
+      ddl-auto: update  # update create
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
@@ -69,6 +69,6 @@ app:
     categories:
       enabled: true
   mongodb:
-    browsing-collection: ${MONGO_BROWSING_COLLECTION}
-
+    browsing-prefix: ${MONGO_BROWSING_PREFIX:browsing}
+    history-prefix: ${MONGO_HISTORY_PREFIX:history}
 
