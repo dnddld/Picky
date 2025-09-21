@@ -11,7 +11,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create-drop   # update create
+      ddl-auto: create  # update create
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
@@ -68,3 +68,7 @@ app:
     force: false  # true -> TRUNCATE 후 강제 재적재
     categories:
       enabled: true
+  mongodb:
+    browsing-collection: ${MONGO_BROWSING_COLLECTION}
+
+
