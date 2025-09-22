@@ -68,3 +68,8 @@ app:
     force: false  # true -> TRUNCATE 후 강제 재적재
     categories:
       enabled: true
+  fact-seed:
+    enabled: true
+    csv-path: /app/data/facts.csv   # 컨테이너 내부 경로
+    line-ending: CRLF                              # 또는 LF
+    force: false                                   # true면 TRUNCATE 후 재적재
