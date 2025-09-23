@@ -11,7 +11,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update  # update create
+      ddl-auto: update   # update create
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
@@ -53,6 +53,10 @@ logging:
 app:
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  oauth:
+    google:
+      web-client-id: ${GOOGLE_OAUTH_CLIENT_ID}
+      chrome-extension-client-id: ${CHROME_EXTENSION_GOOGLE_CLIENT_ID}
   cookie:
     name: ${APP_COOKIE_NAME}
     domain: ${APP_COOKIE_DOMAIN}
