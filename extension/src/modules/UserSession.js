@@ -8,8 +8,9 @@
  * - 완전한 로그아웃 처리
  */
 
-// const BACKEND_URL = "https://j13c102.p.ssafy.io";
-const BACKEND_URL = "http://localhost:8080";
+import { BACKEND_URL } from '../config/env.js';
+
+// const BACKEND_URL = "https://j13c102.p.ssafy.io";  // 실제 배포 URL (env.js로 이동)
 
 export class UserSession {
   constructor() {
