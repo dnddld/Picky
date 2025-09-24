@@ -97,19 +97,27 @@ const CommunityTrends = () => {
   useEffect(() => {
     const fetchCommunityData = async () => {
       try {
-                    setLoading(true);
-                    const visitShareRes = await api.get('/api/dashboard/userstats/categories/visit-share');
-                    const apiData = visitShareRes.data;
-        
-                    setCategoryDistributionData(apiData || []);
-        
-                  } catch (err) {
-                    console.error("Failed to fetch community data:", err);
-                    setError("커뮤니티 데이터를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.");
-                  } finally {
-                    setLoading(false);
-                  }
-                };
+        setLoading(true);
+        const visitShareRes = await api.get('/api/dashboard/userstats/categories/visit-share');
+        const apiData = visitShareRes.data;
+
+        if (apiData && apiData.length > 0) {
+          const sortedData = [...apiData].sort((a, b) => b.percent - a.percent);
+
+          // 상위 5개 카테고리만 선택합니다.
+          const top5Data = sortedData.slice(0, 5);
+          setCategoryDistributionData(top5Data);
+        } else {
+          setCategoryDistributionData([]);
+        }
+
+      } catch (err) {
+        console.error("Failed to fetch community data:", err);
+        setError("커뮤니티 데이터를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.");
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchCommunityData();
   }, []);
 
