@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Box from '../components/Box';
 import Badge from '../components/Badge';
 import { BarChart, Bar, XAxis, ResponsiveContainer } from 'recharts';
-import { ExternalLink, Calendar, TrendingUp } from 'lucide-react';
+import { ExternalLink, Calendar, TrendingUp, Bookmark } from 'lucide-react';
 import Button from '../components/Button';
 import api from '../lib/api';
 
@@ -14,16 +14,35 @@ const weeklyStats = [
 const NewsFeed = () => {
   const [newsData, setNewsData] = useState([]);
   const [sortMode, setSortMode] = useState('MIXED');
+  const [scrapedNewsIds, setScrapedNewsIds] = useState(new Set());
+  const [newsIdToScrapIdMap, setNewsIdToScrapIdMap] = useState(new Map());
+  const [displayCount, setDisplayCount] = useState(3);
 
   useEffect(() => {
     const fetchNewsFeed = async () => {
       try {
-        console.log(`Fetching news feed with sort: ${sortMode}...`);
-        const response = await api.get(`/api/recommendations/feed?sort=${sortMode}`);
-        console.log("API Response:", response);
+        const response = await api.get(`/api/recommendations/feed?sort=${sortMode}&size=100`);
 
         if (response.data && response.data.data && response.data.data.content) {
           setNewsData(response.data.data.content);
+          // Fetch initial scrap status
+          try {
+            const scrapResponse = await api.get(`/api/scraps?type=NEWS`);
+            if (scrapResponse.data && scrapResponse.data.data && scrapResponse.data.data.content) {
+              const initialScrapedIds = new Set();
+              const initialNewsIdToScrapIdMap = new Map();
+              scrapResponse.data.data.content.forEach(scrap => {
+                if (scrap.contentType === 'NEWS') {
+                  initialScrapedIds.add(scrap.contentId);
+                  initialNewsIdToScrapIdMap.set(scrap.contentId, scrap.scrapId);
+                }
+              });
+              setScrapedNewsIds(initialScrapedIds);
+              setNewsIdToScrapIdMap(initialNewsIdToScrapIdMap);
+            }
+          } catch (scrapError) {
+            console.error("초기 스크랩 상태를 가져오는 데 실패했습니다.", scrapError);
+          }
         } else {
           setNewsData([]);
           console.warn("API response structure is not as expected. Data might be empty.", response.data);
@@ -38,6 +57,31 @@ const NewsFeed = () => {
 
     fetchNewsFeed();
   }, [sortMode]);
+
+  const handleScrapToggle = async (newsId) => {
+    try {
+      const response = await api.post('/api/scraps/toggle', { contentType: 'NEWS', contentId: newsId });
+      const { message, data } = response.data;
+
+      if (message === "스크랩 저장 성공") { // Assuming backend sends this message for successful save
+        setScrapedNewsIds(prev => new Set(prev.add(newsId)));
+        setNewsIdToScrapIdMap(prev => new Map(prev.set(newsId, data.scrapId))); // Assuming data contains scrapId
+      } else if (message === "스크랩 취소 성공") { // Assuming backend sends this message for successful delete
+        setScrapedNewsIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(newsId);
+          return newSet;
+        });
+        setNewsIdToScrapIdMap(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(newsId);
+          return newMap;
+        });
+      }
+    } catch (error) {
+      console.error(`스크랩 토글 실패: ${newsId}`, error);
+    }
+  };
 
   const getCategoryVariant = (category) => {
     switch (category) {
@@ -56,7 +100,17 @@ const NewsFeed = () => {
     return new Date(dateString).toLocaleDateString('ko-KR', options);
   };
 
-  console.log("Current newsData state:", newsData);
+  const handleViewNews = async (newsId, newsUrl) => {
+    try {
+      await api.post(`/api/dashboard/news/${newsId}/view`);
+      window.open(newsUrl, '_blank');
+    } catch (error) {
+      console.error(`뉴스 조회 기록에 실패했습니다: ${newsId}`, error);
+      window.open(newsUrl, '_blank'); // 에러 발생 시에도 뉴스 링크는 열어줍니다.
+    }
+  };
+
+
 
   return (
     <div className="space-y-6">
@@ -99,7 +153,7 @@ const NewsFeed = () => {
         </div>
         <div className="space-y-4">
           {newsData && newsData.length > 0 ? (
-            newsData.map((news) => (
+            newsData.slice(0, displayCount).map((news) => (
               <Box key={news.newsId} className="p-6 hover:shadow-md transition-shadow">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between mb-2">
@@ -107,15 +161,16 @@ const NewsFeed = () => {
                       <Badge variant={getCategoryVariant(news.categoryName)}>{news.categoryName}</Badge>
                       <span className="text-xs text-gray-500 flex items-center"><Calendar className="w-3 h-3 mr-1" />{formatDate(news.publishedAt)}</span>
                     </div>
+                    <button onClick={() => handleScrapToggle(news.newsId)} className="text-gray-400 hover:text-yellow-500 transition-colors">
+                      <Bookmark className={`w-5 h-5 ${scrapedNewsIds.has(news.newsId) ? 'fill-current text-yellow-500' : ''}`} />
+                    </button>
                   </div>
                   <h3 className="font-semibold text-gray-900 mb-2 truncate">{news.title}</h3>
                   <p className="text-sm text-gray-600 mb-3 line-clamp-2">{news.summary}</p>
                   <div className="flex items-center justify-end">
-                    <a href={news.url} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="w-3 h-3 mr-1" />자세히 보기
-                      </Button>
-                    </a>
+                    <Button variant="outline" size="sm" onClick={() => handleViewNews(news.newsId, news.url)}>
+                      <ExternalLink className="w-3 h-3 mr-1" />자세히 보기
+                    </Button>
                   </div>
                 </div>
               </Box>
@@ -126,9 +181,13 @@ const NewsFeed = () => {
             </Box>
           )}
         </div>
-        <div className="text-center mt-6">
-          <Button variant="secondary">더 많은 뉴스 보기</Button>
-        </div>
+        {newsData.length > displayCount && (
+          <div className="text-center mt-6">
+            <Button variant="secondary" onClick={() => setDisplayCount(prev => prev + 3)}>
+              더 많은 뉴스 보기
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
