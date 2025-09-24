@@ -23,6 +23,7 @@ export default defineManifest({
     "history",
     "offscreen",
     "scripting",
+    "identity",
   ],
 
   host_permissions: ["<all_urls>"],
