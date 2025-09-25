@@ -34,7 +34,13 @@ spring:
             client-id: ${GOOGLE_OAUTH_CLIENT_ID}
             client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
             scope: openid, email, profile
-            redirect-uri: "${GOOGLE_OAUTH_BASE_URL}/login/oauth2/code/{registrationId}"
+            redirect-uri: "${GOOGLE_OAUTH_BASE_URL}/login/oauth2/code/google"
+          google-extension:
+            client-id: ${CHROME_EXTENSION_GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
+            scope: openid, email, profile
+            redirect-uri: "https://hfacdgjgkmaebgmmbfancbaeofhfijda.chromiumapp.org/"
+            provider: google
         provider:
           google:
             issuer-uri: https://accounts.google.com
