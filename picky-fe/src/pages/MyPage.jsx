@@ -395,8 +395,8 @@ const MyPage = ({ onClose, nickname, profileImage }) => {
                     {filteredQuizzes.length > 0 ? (
                       filteredQuizzes.map(quiz => (
                         <div key={quiz.scrapId} className="p-3 border rounded-lg flex justify-between items-start">
-                          <div>
-                                                        <h4 className="font-semibold">문제 내용: {quiz.title}</h4>
+                          <div className="flex-1 min-w-0">
+                                                        <h4 className="font-semibold truncate" title={quiz.title}>문제 내용: {quiz.title}</h4>
                                                         {quiz.url && <p className="text-xs text-blue-600 hover:underline cursor-pointer" onClick={() => window.open(quiz.url, '_blank')}>출처: {quiz.url}</p>}                            <p className="text-xs text-gray-500">{quiz.contentType}</p>
                           </div>
                           <Button onClick={() => handleDeleteScrap(quiz.scrapId, 'QUIZ')} variant="ghost" size="sm">

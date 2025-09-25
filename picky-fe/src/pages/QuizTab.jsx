@@ -14,6 +14,7 @@ const QuizTab = () => {
   const [quizIdToScrapIdMap, setQuizIdToScrapIdMap] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [quizResult, setQuizResult] = useState(null);
   const [quizStats, setQuizStats] = useState({
     totalQuizzes: 0,
     correctRate: 0,
@@ -27,8 +28,12 @@ const QuizTab = () => {
       try {
         const response = await api.get('/api/dashboard/quiz/stats');
         if (response.data && response.data.data) {
+          const stats = response.data.data;
           setQuizStats({
-            ...response.data.data,
+            totalQuizzes: stats.totalQuizAttempts,
+            correctRate: stats.accuracyRate,
+            currentStreak: stats.currentStreak,
+            bestStreak: stats.maxStreak,
             weeklyProgress: response.data.data.weeklyProgress || []
           });
         }
@@ -44,10 +49,10 @@ const QuizTab = () => {
       try {
         setLoading(true);
         // Fetch quiz recommendation
-        const quizResponse = await api.get('/api/recommendations/next?type=QUIZ');
-        const fetchedQuiz = quizResponse.data.data;
-        if (fetchedQuiz) {
-          setQuizData([fetchedQuiz]); // Assuming it returns one quiz at a time
+        const quizResponse = await api.get('/api/quizzes/recommended');
+        const fetchedQuizzes = quizResponse.data.data.content;
+        if (fetchedQuizzes && fetchedQuizzes.length > 0) {
+          setQuizData(fetchedQuizzes);
         } else {
           setQuizData([]);
         }
@@ -85,44 +90,33 @@ const QuizTab = () => {
       return;
     }
     setSelectedAnswer(answer);
-    setShowExplanation(true);
+    
     try {
-      await api.post(`/api/quizzes/${currentQuiz.contentId}/answer`, { userAnswer: answer });
-      // Optionally, update quiz stats or provide feedback based on response
+      const response = await api.post(`/api/quizzes/${currentQuiz.quizId}/answer`, { userAnswer: answer });
+      setQuizResult(response.data.data);
+      setShowExplanation(true);
     } catch (error) {
       console.error("퀴즈 답변 제출에 실패했습니다.", error);
     }
   };
 
-  const nextQuiz = async () => {
+  const nextQuiz = () => {
     if (currentQuizIndex < quizData.length - 1) {
       setCurrentQuizIndex(prev => prev + 1);
       setSelectedAnswer(null);
       setShowExplanation(false);
     } else {
-      // Fetch a new quiz from API
-      try {
-        setLoading(true);
-        const quizResponse = await api.get('/api/recommendations/next?type=QUIZ');
-        const fetchedQuiz = quizResponse.data.data;
-        if (fetchedQuiz) {
-          setQuizData([fetchedQuiz]); // Replace with new quiz
-          setCurrentQuizIndex(0); // Reset index for the new quiz
-        } else {
-          setQuizData([]); // No more quizzes available
-        }
-        setSelectedAnswer(null);
-        setShowExplanation(false);
-      } catch (err) {
-        console.error("다음 퀴즈를 가져오는 데 실패했습니다.", err);
-        setError("다음 퀴즈를 불러오는 데 실패했습니다.");
-      } finally {
-        setLoading(false);
-      }
+      // All quizzes in the current batch are completed.
+      // You can either fetch more quizzes here or show a completion message.
+      console.log("All quizzes done!");
     }
   };
 
   const handleScrapToggle = async (quizId) => {
+    if (!quizId) {
+      console.error("handleScrapToggle called with invalid quizId:", quizId);
+      return;
+    }
     try {
       const response = await api.post('/api/scraps/toggle', { contentType: 'QUIZ', contentId: quizId });
       const { message, data } = response.data;
@@ -159,7 +153,7 @@ const QuizTab = () => {
         
         <Box className="text-center p-4">
           <Target className="w-8 h-8 text-green-600 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-green-700">{quizStats.correctRate}%</p>
+          <p className="text-2xl font-bold text-green-700">{Math.floor(quizStats.correctRate)}%</p>
           <p className="text-sm text-green-600">정답률</p>
         </Box>
         
@@ -176,24 +170,7 @@ const QuizTab = () => {
         </Box>
       </div>
 
-      {/* 이번 주 퀴즈 진행률 */}
-      <Box className="mb-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">이번 주 퀴즈 활동</h3>
-        <div className="grid grid-cols-7 gap-2">
-          {quizStats.weeklyProgress.map((day, index) => (
-            <div key={index} className="text-center">
-              <p className="text-xs text-gray-600 mb-2">{day.day}</p>
-              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
-                <div 
-                  className="bg-purple-600 h-2 rounded-full" 
-                  style={{ width: `${(day.correct / day.total) * 100}%` }}
-                ></div>
-              </div>
-              <p className="text-xs text-gray-500">{day.correct}/{day.total}</p>
-            </div>
-          ))}
-        </div>
-      </Box>
+
 
       {loading ? (
         <Box className="p-6 text-center text-gray-500">
@@ -210,9 +187,9 @@ const QuizTab = () => {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">오늘의 퀴즈</h3>
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center space-x-2">
-              <Badge>{currentQuiz.category}</Badge>
-              <Button variant="ghost" size="sm" onClick={() => handleScrapToggle(currentQuiz.contentId)} className={scrapedQuizIds.has(currentQuiz.contentId) ? 'text-yellow-500' : 'text-gray-400'}>
-                <Bookmark className={`w-4 h-4 ${scrapedQuizIds.has(currentQuiz.id) ? 'fill-current' : ''}`} />
+              <Badge>{currentQuiz.title}</Badge>
+              <Button variant="ghost" size="sm" onClick={() => handleScrapToggle(currentQuiz.quizId)} className={scrapedQuizIds.has(currentQuiz.quizId) ? 'text-yellow-500' : 'text-gray-400'}>
+                <Bookmark className={`w-4 h-4 ${scrapedQuizIds.has(currentQuiz.quizId) ? 'fill-current' : ''}`} />
               </Button>
             </div>
             <span>문제 {currentQuizIndex + 1} / {quizData.length}</span>
@@ -227,14 +204,20 @@ const QuizTab = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className={`flex items-center justify-center p-4 rounded-lg ${selectedAnswer === currentQuiz.answer ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {selectedAnswer === currentQuiz.answer ? <CheckCircle className="w-6 h-6 mr-2" /> : <XCircle className="w-6 h-6 mr-2" />}
-                  <span className="font-semibold">{selectedAnswer === currentQuiz.answer ? '정답입니다!' : '오답입니다.'} (정답: {currentQuiz.answer ? 'O' : 'X'})</span>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-blue-900 mb-2">해설</h4>
-                  <p className="text-blue-800">{currentQuiz.explanation}</p>
-                </div>
+                {quizResult && (
+                  <>
+                    <div className={`flex items-center justify-center p-4 rounded-lg ${quizResult.isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {quizResult.isCorrect ? <CheckCircle className="w-6 h-6 mr-2" /> : <XCircle className="w-6 h-6 mr-2" />}
+                      <span className="font-semibold">{quizResult.isCorrect ? '정답입니다!' : '오답입니다.'} (정답: {quizResult.correctAnswer ? 'O' : 'X'})</span>
+                    </div>
+                    {!quizResult.isCorrect && (
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <h4 className="font-semibold text-blue-900 mb-2">해설</h4>
+                        <p className="text-blue-800">{quizResult.explanation}</p>
+                      </div>
+                    )}
+                  </>
+                )}
                 {currentQuizIndex < quizData.length - 1 && (
                   <div className="text-center">
                     <Button onClick={nextQuiz} variant="primary">다음 문제</Button>
@@ -255,7 +238,6 @@ const QuizTab = () => {
           <Trophy className="w-12 h-12 text-purple-600 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-purple-900 mb-2">오늘의 퀴즈 완료!</h3>
           <p className="text-purple-700 mb-4">수고하셨습니다. 내일도 새로운 퀴즈로 찾아뵙겠습니다.</p>
-          <Button variant="primary">내 퀴즈 기록 보기</Button>
         </Box>
       )}
     </div>

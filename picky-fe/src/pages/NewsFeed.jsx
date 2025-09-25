@@ -1,15 +1,12 @@
 import { useState, useEffect } from 'react';
 import Box from '../components/Box';
 import Badge from '../components/Badge';
-import { BarChart, Bar, XAxis, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { ExternalLink, Calendar, TrendingUp, Bookmark } from 'lucide-react';
 import Button from '../components/Button';
 import api from '../lib/api';
 
-const weeklyStats = [
-  { day: '월', news: 12 }, { day: '화', news: 8 }, { day: '수', news: 15 }, 
-  { day: '목', news: 11 }, { day: '금', news: 18 }, { day: '토', news: 6 }, { day: '일', news: 9 }
-];
+
 
 const NewsFeed = () => {
   const [newsData, setNewsData] = useState([]);
@@ -17,6 +14,21 @@ const NewsFeed = () => {
   const [scrapedNewsIds, setScrapedNewsIds] = useState(new Set());
   const [newsIdToScrapIdMap, setNewsIdToScrapIdMap] = useState(new Map());
   const [displayCount, setDisplayCount] = useState(3);
+  const [newsStats, setNewsStats] = useState(null);
+
+  useEffect(() => {
+    const fetchNewsStats = async () => {
+      try {
+        const response = await api.get('/api/dashboard/news/stats');
+        if (response.data && response.data.data) {
+          setNewsStats(response.data.data);
+        }
+      } catch (error) {
+        console.error("뉴스 통계를 가져오는 데 실패했습니다.", error);
+      }
+    };
+    fetchNewsStats();
+  }, []);
 
   useEffect(() => {
     const fetchNewsFeed = async () => {
@@ -112,23 +124,36 @@ const NewsFeed = () => {
 
 
 
+  const dayOfWeekMap = {
+    MONDAY: '월', TUESDAY: '화', WEDNESDAY: '수', THURSDAY: '목', 
+    FRIDAY: '금', SATURDAY: '토', SUNDAY: '일'
+  };
+
+  const formattedDailyConsumption = newsStats?.dailyConsumption.map(d => ({ ...d, day: dayOfWeekMap[d.dayOfWeek] })) || [];
+
   return (
     <div className="space-y-6">
       <Box>
         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center"><TrendingUp className="w-5 h-5 mr-2 text-blue-600" />이번 주 뉴스 소비량</h3>
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <p className="text-2xl font-bold text-gray-900">79개</p>
-            <p className="text-sm text-gray-600">지난주 대비 +12%</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-600">일평균</p>
-            <p className="text-lg font-semibold text-purple-700">11.3개</p>
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={120}>
-          <BarChart data={weeklyStats}><XAxis dataKey="day" stroke="#64748b" /><Bar dataKey="news" fill="#8b5cf6" radius={[4, 4, 0, 0]} /></BarChart>
-        </ResponsiveContainer>
+        {newsStats ? (
+          <>
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <p className="text-2xl font-bold text-gray-900">{newsStats.weeklyNewsConsumption}개</p>
+                <p className="text-sm text-gray-600">이번 주에 읽은 뉴스</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">총 읽은 뉴스</p>
+                <p className="text-lg font-semibold text-purple-700">{newsStats.totalNewsViewed}개</p>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={formattedDailyConsumption}><XAxis dataKey="day" stroke="#64748b" /><Tooltip cursor={{fill: 'rgba(238, 242, 255, 0.5)'}} /><Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} /></BarChart>
+            </ResponsiveContainer>
+          </>
+        ) : (
+          <div className="text-center p-8 text-gray-500">통계 정보를 불러오는 중입니다...</div>
+        )}
       </Box>
 
       <div>

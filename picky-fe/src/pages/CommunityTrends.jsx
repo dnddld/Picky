@@ -146,7 +146,7 @@ const CommunityTrends = () => {
     },
     {
       title: '평균 방문한 사이트',
-      value: summaryData ? `${Number(summaryData.avgVisitCount).toFixed(1)}개` : 'N/A',
+      value: summaryData ? `${Math.round(Number(summaryData.avgVisitCount))}개` : 'N/A',
       description: '',
       icon: Globe,
     }

@@ -145,7 +145,7 @@ const ActivityReport = () => {
   ];
 
   const hasHourlyData = hourlyStats.some(stat => stat.timeSpentMinutes > 0);
-  const totalBrowsingTimeForMessage = userStats?.totalTimeSpent ? formatTime(Math.round(userStats.totalTimeSpent / 60)) : '데이터 없음';
+  const totalBrowsingTimeForMessage = userStats?.totalTimeSpent ? formatTime(Math.round(parseTimeToSeconds(userStats.totalTimeSpent) / 60)) : '데이터 없음';
 
   return (
     <div className="space-y-8">
