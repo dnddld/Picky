@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Box from '../components/Box';
 import Badge from '../components/Badge';
 import { CheckCircle, XCircle, Trophy, Target, Flame, Bookmark, Loader, AlertCircle } from 'lucide-react';
@@ -10,8 +10,100 @@ const QuizTab = () => {
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [quizData, setQuizData] = useState([]); // Initialize with empty array
+  const COOLDOWN_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
+  const [lastQuizFetchTime, setLastQuizFetchTime] = useState(() => {
+    const storedTime = localStorage.getItem('lastQuizFetchTime');
+    return storedTime ? parseInt(storedTime, 10) : 0;
+  });
+  const [isQuizCooldown, setIsQuizCooldown] = useState(() => {
+    const storedTime = localStorage.getItem('lastQuizFetchTime');
+    if (storedTime) {
+      const now = Date.now();
+      return (now - parseInt(storedTime, 10)) < COOLDOWN_DURATION;
+    }
+    return false;
+  });
+  const [remainingTime, setRemainingTime] = useState(0); // New state for countdown
+  const lastQuizFetchTimeRef = useRef(lastQuizFetchTime);
+
+  useEffect(() => {
+    lastQuizFetchTimeRef.current = lastQuizFetchTime;
+  }, [lastQuizFetchTime]);
+
+  useEffect(() => {
+    let timer;
+    if (isQuizCooldown) {
+      const storedTime = parseInt(localStorage.getItem('lastQuizFetchTime') || '0', 10);
+      const endTime = storedTime + COOLDOWN_DURATION;
+
+      const updateRemainingTime = () => {
+        const now = Date.now();
+        const newRemaining = Math.max(0, Math.ceil((endTime - now) / 1000));
+        setRemainingTime(newRemaining);
+
+        if (newRemaining === 0) {
+          setIsQuizCooldown(false);
+          localStorage.removeItem('lastQuizFetchTime');
+          clearInterval(timer);
+        }
+      };
+
+      updateRemainingTime(); // Initial call
+      timer = setInterval(updateRemainingTime, 1000);
+    } else {
+      setRemainingTime(0);
+    }
+
+    return () => clearInterval(timer);
+  }, [isQuizCooldown, lastQuizFetchTime, COOLDOWN_DURATION]);
+
+  const fetchNewQuizzes = useCallback(async () => {
+    const now = Date.now();
+    const storedLastFetchTime = parseInt(localStorage.getItem('lastQuizFetchTime') || '0', 10);
+
+    if (now - storedLastFetchTime < COOLDOWN_DURATION) {
+      setIsQuizCooldown(true);
+      setTimeout(() => {
+        setIsQuizCooldown(false);
+        localStorage.removeItem('lastQuizFetchTime'); // Clear cooldown from storage
+      }, COOLDOWN_DURATION - (now - storedLastFetchTime));
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const quizResponse = await api.get('/api/quizzes/recommended');
+      const fetchedQuizzes = quizResponse.data.data.content;
+      if (fetchedQuizzes && fetchedQuizzes.length > 0) {
+        setQuizData(fetchedQuizzes);
+        setLastQuizFetchTime(now);
+        localStorage.setItem('lastQuizFetchTime', now.toString()); // Save to localStorage
+        setIsQuizCooldown(true);
+        setTimeout(() => {
+          setIsQuizCooldown(false);
+          localStorage.removeItem('lastQuizFetchTime'); // Clear cooldown from storage
+        }, COOLDOWN_DURATION);
+      } else {
+        setQuizData([]);
+        // If no quizzes are fetched, still start cooldown to prevent hammering the API
+        setLastQuizFetchTime(now);
+        localStorage.setItem('lastQuizFetchTime', now.toString()); // Save to localStorage
+        setIsQuizCooldown(true);
+        setTimeout(() => {
+          setIsQuizCooldown(false);
+          localStorage.removeItem('lastQuizFetchTime'); // Clear cooldown from storage
+        }, COOLDOWN_DURATION);
+      }
+    } catch (err) {
+      console.error("퀴즈를 가져오는 데 실패했습니다.", err);
+      setError("퀴즈를 불러오는 데 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
   const [scrapedQuizIds, setScrapedQuizIds] = useState(new Set());
   const [quizIdToScrapIdMap, setQuizIdToScrapIdMap] = useState(new Map());
+  const [quizStarted, setQuizStarted] = useState(false); // New state for quiz start status
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [quizResult, setQuizResult] = useState(null);
@@ -45,17 +137,12 @@ const QuizTab = () => {
   }, []);
 
   useEffect(() => {
+    if (!quizStarted) return; // Only fetch if quiz has started
+
     const fetchQuizAndScrapStatus = async () => {
+      setLoading(true);
       try {
-        setLoading(true);
-        // Fetch quiz recommendation
-        const quizResponse = await api.get('/api/quizzes/recommended');
-        const fetchedQuizzes = quizResponse.data.data.content;
-        if (fetchedQuizzes && fetchedQuizzes.length > 0) {
-          setQuizData(fetchedQuizzes);
-        } else {
-          setQuizData([]);
-        }
+        await fetchNewQuizzes();
 
         // Fetch initial scrap status
         const scrapResponse = await api.get(`/api/scraps?type=QUIZ`);
@@ -80,7 +167,7 @@ const QuizTab = () => {
     };
 
     fetchQuizAndScrapStatus();
-  }, []);
+  }, [fetchNewQuizzes, quizStarted]); // Add quizStarted to dependencies
 
   const currentQuiz = quizData[currentQuizIndex];
 
@@ -100,17 +187,21 @@ const QuizTab = () => {
     }
   };
 
-  const nextQuiz = () => {
+  const nextQuiz = useCallback(() => {
     if (currentQuizIndex < quizData.length - 1) {
       setCurrentQuizIndex(prev => prev + 1);
       setSelectedAnswer(null);
       setShowExplanation(false);
     } else {
-      // All quizzes in the current batch are completed.
-      // You can either fetch more quizzes here or show a completion message.
-      console.log("All quizzes done!");
+      // All quizzes in the current batch are completed. Try to fetch new quizzes.
+      fetchNewQuizzes();
     }
+  }, [currentQuizIndex, quizData, setCurrentQuizIndex, setSelectedAnswer, setShowExplanation, fetchNewQuizzes]);
+
+  const handleStartQuiz = () => {
+    setQuizStarted(true);
   };
+
 
   const handleScrapToggle = async (quizId) => {
     if (!quizId) {
@@ -139,6 +230,12 @@ const QuizTab = () => {
     } catch (error) {
       console.error(`스크랩 토글 실패: ${quizId}`, error);
     }
+  };
+
+  const formatRemainingTime = (seconds) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}분 ${secs}초`;
   };
 
   return (
@@ -170,9 +267,17 @@ const QuizTab = () => {
         </Box>
       </div>
 
-
-
-      {loading ? (
+      {!quizStarted ? (
+        <Box className="p-6 text-center text-gray-500">
+          <p className="mb-4 text-lg font-semibold">새로운 퀴즈를 시작해 보세요!</p>
+          <Button variant="primary" onClick={handleStartQuiz} disabled={isQuizCooldown}>
+            {isQuizCooldown ? '쿨다운 중...' : '퀴즈 시작하기'}
+          </Button>
+          {isQuizCooldown && (
+            <p className="mt-2 text-sm text-gray-600">다음 퀴즈는 잠시 후에 준비됩니다. ({formatRemainingTime(remainingTime)})</p>
+          )}
+        </Box>
+      ) : loading ? (
         <Box className="p-6 text-center text-gray-500">
           <Loader className="w-8 h-8 animate-spin mx-auto mb-2" />
           <p>퀴즈를 불러오는 중...</p>
@@ -210,7 +315,7 @@ const QuizTab = () => {
                       {quizResult.isCorrect ? <CheckCircle className="w-6 h-6 mr-2" /> : <XCircle className="w-6 h-6 mr-2" />}
                       <span className="font-semibold">{quizResult.isCorrect ? '정답입니다!' : '오답입니다.'} (정답: {quizResult.correctAnswer ? 'O' : 'X'})</span>
                     </div>
-                    {!quizResult.isCorrect && (
+                    {quizResult.correctAnswer === false && (
                       <div className="bg-blue-50 p-4 rounded-lg">
                         <h4 className="font-semibold text-blue-900 mb-2">해설</h4>
                         <p className="text-blue-800">{quizResult.explanation}</p>
@@ -229,7 +334,7 @@ const QuizTab = () => {
         </Box>
       ) : (
         <Box className="p-6 text-center text-gray-500">
-          <p>표시할 퀴즈가 없습니다.</p>
+          <p>퀴즈가 준비 중입니다.</p>
         </Box>
       )}
 

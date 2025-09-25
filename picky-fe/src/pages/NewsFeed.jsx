@@ -148,7 +148,7 @@ const NewsFeed = () => {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={120}>
-              <BarChart data={formattedDailyConsumption}><XAxis dataKey="day" stroke="#64748b" /><Tooltip cursor={{fill: 'rgba(238, 242, 255, 0.5)'}} /><Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} /></BarChart>
+              <BarChart data={formattedDailyConsumption}><XAxis dataKey="day" stroke="#64748b" /><Tooltip cursor={{fill: 'rgba(238, 242, 255, 0.5)'}} formatter={(value) => `${value}개`} /><Bar dataKey="count" name="" fill="#8b5cf6" radius={[4, 4, 0, 0]} /></BarChart>
             </ResponsiveContainer>
           </>
         ) : (
