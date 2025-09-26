@@ -91,10 +91,9 @@ async function checkAndCollectHistory() {
       console.log("📚 최초 로그인 - 히스토리 데이터 수집 시작");
 
       const result = await historyCollector.collectHistoryWithContent();
-      console.log(
+      if (result) {console.log(
         "✅ 로그인 후 히스토리 수집 완료:",
-        result.contentExtractionSummary
-      );
+      );}
 
       // 수집 완료 플래그 저장
       await chrome.storage.local.set({ historyCollected: true });
@@ -262,6 +261,16 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     return false;
   }
 
+// --- [추가] 추천 콘텐츠 관련 메시지 핸들러 ---
+  if (message.type === 'ACKNOWLEDGE_RECOMMENDATION') {
+    (async () => {
+      const { slotId, eventType } = message.payload;
+      const result = await acknowledgeRecommendation(slotId, eventType);
+      sendResponse(result);
+    })();
+    return true; // 비동기 응답
+  }
+
 // --- [추가] UI 관련 메시지 핸들러 ---
   if (message.type === 'GET_USER_SETTINGS') {
     (async () => {
@@ -384,6 +393,125 @@ async function updateUserSettings(settings) {
   }
 }
 
+// --- [추가] 추천 콘텐츠 API 연동 함수 ---
+async function getNextRecommendation(contentType) {
+  if (!userSession.isUserAuthenticated()) {
+    return { success: false, reason: "unauthenticated" };
+  }
+  try {
+    // API URL에 contentType을 쿼리 파라미터로 추가
+    const response = await authFetch(`${BACKEND_URL}/api/recommendations/next?type=${contentType}`);
+    if (response.status === 204) { // No Content
+      return { success: true, data: null }; // 추천할 내용이 없음
+    }
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+    const result = await response.json();
+    return { success: true, data: result.data };
+  } catch (error) {
+    console.error(`Failed to fetch ${contentType} recommendation:`, error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function acknowledgeRecommendation(slotId, eventType) {
+  if (!userSession.isUserAuthenticated()) {
+    return { success: false, reason: "unauthenticated" };
+  }
+  try {
+    const response = await authFetch(`${BACKEND_URL}/api/recommendations/slots/${slotId}/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventType }),
+    });
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to acknowledge recommendation:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// --- [추가] 알림 스케줄러 로직 ---
+const ALARM_NAME = 'picky-recommendation-alarm';
+
+// 알람이 울릴 때 실행될 로직
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === ALARM_NAME) {
+    console.log('⏰ 알람 발생! 다음 추천 콘텐츠를 가져옵니다.');
+    
+    // 1. 로그인 및 모든 설정값 확인
+    const settings = await chrome.storage.sync.get(['isExtensionOn', 'isCharacterOn', 'isNotificationsOn', 'notificationItems']);
+    if (!userSession.isUserAuthenticated() || !settings.isExtensionOn || !settings.isCharacterOn || !settings.isNotificationsOn) {
+      console.log('🚫 추천 비활성화 상태. (로그아웃 또는 설정 OFF)');
+      return;
+    }
+
+    // 2. 추천 가능한 콘텐츠 타입 목록 생성
+    const enabledTypes = Object.entries(settings.notificationItems || {})
+      .filter(([, isEnabled]) => isEnabled)
+      .map(([type]) => type.toUpperCase());
+
+    if (enabledTypes.length === 0) {
+      console.log('🚫 모든 추천 항목이 비활성화되어 있습니다.');
+      return;
+    }
+
+    // 3. 랜덤으로 콘텐츠 타입 선택 및 API 호출
+    const randomType = enabledTypes[Math.floor(Math.random() * enabledTypes.length)];
+    const result = await getNextRecommendation(randomType);
+
+    // 4. 성공 시 모든 탭의 content script로 추천 내용 브로드캐스트
+    if (result.success && result.data) {
+      console.log(`📢 [${randomType}] 추천 콘텐츠를 모든 탭에 전송합니다:`, result.data);
+      const tabs = await chrome.tabs.query({});
+      for (const tab of tabs) {
+        try {
+          await chrome.tabs.sendMessage(tab.id, {
+            type: 'SHOW_RECOMMENDATION',
+            payload: result.data,
+          });
+        } catch (e) {
+          // content script가 주입되지 않은 탭(예: chrome://)에서는 에러 발생. 정상임.
+        }
+      }
+    } else {
+      console.log(`ℹ️ [${randomType}] 추천할 콘텐츠가 없거나 가져오지 못했습니다.`);
+    }
+  }
+});
+
+// 설정값이 변경될 때 알람을 재설정하는 함수
+async function resetAlarm() {
+  const settings = await chrome.storage.sync.get(['notificationInterval', 'isNotificationsOn']);
+  const interval = settings.notificationInterval || 30;
+  const isOn = settings.isNotificationsOn !== false;
+
+  await chrome.alarms.clear(ALARM_NAME);
+  console.log('🗑️ 기존 알람 삭제 완료.');
+
+  if (isOn) {
+    chrome.alarms.create(ALARM_NAME, {
+      delayInMinutes: 1, // 처음엔 1분 뒤에 시작
+      periodInMinutes: 1
+    });
+    console.log(`✨ 1분 간격으로 새 알람 설정 완료.`);
+  } else {
+    console.log('🚫 알림이 비활성화되어 알람을 설정하지 않습니다.');
+  }
+}
+
+// 스토리지 변경 감지하여 알람 재설정
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'sync' && (changes.notificationInterval || changes.isNotificationsOn)) {
+    console.log('🔄 알림 설정 변경 감지. 알람을 재설정합니다.');
+    resetAlarm();
+  }
+});
+
 
 // 30초마다 큐에 있는 데이터들을 서버로 전송
 setInterval(async () => {
@@ -412,4 +540,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     });
     console.log("📝 새로운 설치 상태 저장 완료 - 로그인 후 히스토리 수집 예정");
   }
+  // [추가] 설치 또는 업데이트 시 항상 알람 재설정
+  resetAlarm();
 });

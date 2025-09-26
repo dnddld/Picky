@@ -24,6 +24,7 @@ export default defineManifest({
     "offscreen",
     "scripting",
     "identity",
+    "alarms",
   ],
 
   host_permissions: ["<all_urls>"],

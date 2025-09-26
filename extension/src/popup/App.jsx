@@ -156,19 +156,27 @@ function App() {
       // 1. 인증 상태를 먼저 확인합니다.
       await checkAuthStatus();
 
-      // 2. background.js에 메시지를 보내 백엔드로부터 최신 설정을 가져옵니다.
-      const response = await sendMessage({ type: "GET_USER_SETTINGS" });
-      
-      // 성공적으로 설정을 가져오면 해당 값으로 UI 상태를 설정합니다.
-      // 실패하더라도 background.js가 로컬 스토리지의 캐시된 값을 보내주므로 UI는 이전 상태로 표시됩니다.
-      if (response && response.settings) {
-        const { settings } = response;
-        if (typeof settings.isExtensionOn === 'boolean') setIsExtensionOn(settings.isExtensionOn);
-        if (typeof settings.isCharacterOn === 'boolean') setIsCharacterOn(settings.isCharacterOn);
-        if (typeof settings.isNotificationsOn === 'boolean') setIsNotificationsOn(settings.isNotificationsOn);
-        if (settings.notificationItems) setNotificationItems(settings.notificationItems);
-        if (typeof settings.notificationInterval === 'number') setNotificationInterval(settings.notificationInterval);
+      // 2. chrome.storage.sync에서 직접 값을 읽어와 UI를 즉시 초기화합니다.
+      const localSettings = await chrome.storage.sync.get([
+        'isExtensionOn',
+        'isCharacterOn',
+        'isNotificationsOn',
+        'notificationItems',
+        'notificationInterval'
+      ]);
+
+      if (localSettings) {
+        if (typeof localSettings.isExtensionOn === 'boolean') setIsExtensionOn(localSettings.isExtensionOn);
+        if (typeof localSettings.isCharacterOn === 'boolean') setIsCharacterOn(localSettings.isCharacterOn);
+        if (typeof localSettings.isNotificationsOn === 'boolean') setIsNotificationsOn(localSettings.isNotificationsOn);
+        if (localSettings.notificationItems) setNotificationItems(localSettings.notificationItems);
+        if (typeof localSettings.notificationInterval === 'number') setNotificationInterval(localSettings.notificationInterval);
       }
+
+      // 3. 백그라운드에서 백엔드와 동기화를 시도합니다. (UI는 이미 로드됨)
+      // 이 결과는 onChanged 리스너에 의해 처리되어 UI가 최신 상태로 유지됩니다.
+      sendMessage({ type: "GET_USER_SETTINGS" });
+
       setIsLoading(false);
     };
     init();
@@ -195,10 +203,11 @@ function App() {
   /* ---------------------------------------------------------------------------
    * [통합] 이벤트 핸들러: 상태 변경 → storage 반영
    * -------------------------------------------------------------------------*/
-  // chrome.storage.sync 대신 background.js에 메시지를 보내는 방식으로 변경합니다.
+  // [수정] 설정 변경 시 background.js에 메시지를 보내는 동시에 chrome.storage.sync에도 직접 저장합니다.
   const handleSettingChange = (setting) => {
-    // sendMessage를 통해 background.js에 설정 업데이트를 요청합니다.
-    // background.js가 백엔드 통신, 데이터 병합, 최종 스토리지 저장을 모두 처리합니다.
+    // 1. UI의 즉각적인 반응을 위해 chrome.storage.sync에 직접 저장
+    chrome.storage.sync.set(setting);
+    // 2. 백엔드 동기화를 위해 background.js에 메시지 전송
     sendMessage({ type: "UPDATE_USER_SETTINGS", settings: setting });
   };
 
@@ -229,6 +238,7 @@ function App() {
   const handleIntervalChange = useCallback((value) => {
     const clamped = Math.min(120, Math.max(10, Array.isArray(value) ? value[0] : Number(value)));
     setNotificationInterval(clamped);
+    // [수정] 슬라이더 값을 변경할 때 즉시 저장하도록 변경
     handleSettingChange({ notificationInterval: clamped });
   }, []);
 
