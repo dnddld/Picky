@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle, XCircle, ExternalLink, Bookmark, X, Pin, PinOff } from 'lucide-react';
-import { shimejiData } from './shimeji-data.js';
+import { getShimejiData } from './shimeji-data.js';
 import { evaluateCondition, evaluateValue } from './condition-parser.js';
 
 
 /**
  * @dev 자동 위치 조정 기능이 추가된 컨텍스트 메뉴
  */
-function CustomContextMenu({ x, y, onSelect, isPinned, onTogglePin }) {
+function CustomContextMenu({ x, y, onSelect, isPinned, onTogglePin, characterData }) {
   const menuRef = useRef(null);
   const [position, setPosition] = useState({ top: y, left: x, opacity: 0 });
 
@@ -30,7 +30,7 @@ function CustomContextMenu({ x, y, onSelect, isPinned, onTogglePin }) {
       ['SelectEdge', '점프...'],
     ]);
 
-    const actionMap = new Map(shimejiData.actions.map((action) => [action.name, action]));
+    const actionMap = new Map(characterData.actions.map((action) => [action.name, action]));
 
     const actions = [];
     meaningfulActionMap.forEach((displayName, actionName) => {
@@ -146,6 +146,9 @@ function HighlightComponent({ elementRect, selectionMode, mousePosition }) {
 
 // 메인 오버레이 컴포넌트
 function Overlay() {
+  // [수정] 현재 캐릭터 데이터를 상태로 관리합니다.
+  const [shimejiData, setShimejiData] = useState(() => getShimejiData('blank-guy'));
+
   // 상태 정의
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [hasNotification, setHasNotification] = useState(false);
@@ -888,6 +891,27 @@ function Overlay() {
       // Fallback for development environments where chrome API is not available
       setSpritesheetUrl(shimejiData.spritesheet);
     }
+  }, [shimejiData]);
+
+  // [추가] 사용자가 선택한 캐릭터를 불러오는 로직
+  useEffect(() => {
+    const loadSelectedCharacter = async () => {
+      const settings = await chrome.storage.sync.get('selectedCharacter');
+      if (settings.selectedCharacter) {
+        setShimejiData(getShimejiData(settings.selectedCharacter));
+      }
+    };
+
+    loadSelectedCharacter();
+
+    const handleStorageChange = (changes, area) => {
+      if (area === 'sync' && changes.selectedCharacter) {
+        setShimejiData(getShimejiData(changes.selectedCharacter.newValue));
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
   // JSX 렌더링
@@ -916,6 +940,7 @@ function Overlay() {
               y={contextMenu.y}
               isPinned={isPinned}
               onTogglePin={() => setIsPinned((prev) => !prev)}
+              characterData={shimejiData}
               onSelect={(actionName) => {
                 forceCharacterAction(actionName);
                 setContextMenu({ isOpen: false, x: 0, y: 0 });

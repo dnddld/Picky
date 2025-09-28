@@ -385,21 +385,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // --- [추가] UI 관련 메시지 핸들러 ---
   if (message.type === 'GET_USER_SETTINGS') {
     (async () => {
-      const result = await fetchUserSettings();
+      const result = await syncSettingsFromBackend();
       if (result.success) {
-        // 백엔드 DTO를 chrome.storage 구조에 맞게 변환
-        const settingsToStore = {
-          isCharacterOn: result.settings.avatarCode !== 'disabled', // 'disabled' 코드가 캐릭터 off를 의미한다고 가정
-          isNotificationsOn: result.settings.notifyEnabled,
-          notificationItems: {
-            news: result.settings.newsEnabled,
-            quiz: result.settings.quizEnabled,
-            fact: result.settings.factEnabled,
-          },
-          notificationInterval: result.settings.notifyInterval,
-        };
-        await chrome.storage.sync.set(settingsToStore);
-        sendResponse({ success: true, settings: settingsToStore });
+        sendResponse(result);
       } else {
         // 실패 시 기존 storage 값이라도 보내주기
         const localSettings = await chrome.storage.sync.get(null);
@@ -442,6 +430,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       //       다시 켤 때는 기본값('default')으로 설정합니다. (백엔드는 'default' 코드를 알고 있어야 함)
       if (changes.isCharacterOn !== undefined) {
         payload.avatarCode = changes.isCharacterOn ? (fullSettings.avatarCode !== 'disabled' ? fullSettings.avatarCode : 'default') : 'disabled';
+      }
+
+      // [추가] 사용자가 선택한 캐릭터 ID(selectedCharacter)를 avatarCode에 반영합니다.
+      if (changes.selectedCharacter) {
+        payload.avatarCode = changes.selectedCharacter;
       }
 
       // 3. 완성된 페이로드로 백엔드에 업데이트를 요청합니다.
@@ -494,6 +487,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // --- API 연동 함수 ---
+async function syncSettingsFromBackend() {
+  if (!userSession.isUserAuthenticated()) {
+    return { success: false, reason: "unauthenticated" };
+  }
+  const result = await fetchUserSettings();
+  if (result.success) {
+    const settingsToStore = {
+      selectedCharacter: result.settings.avatarCode,
+      isCharacterOn: result.settings.avatarCode !== 'disabled',
+      isNotificationsOn: result.settings.notifyEnabled,
+      notificationItems: {
+        news: result.settings.newsEnabled,
+        quiz: result.settings.quizEnabled,
+        fact: result.settings.factEnabled,
+      },
+      notificationInterval: result.settings.notifyInterval,
+    };
+    await chrome.storage.sync.set(settingsToStore);
+    console.log('⚙️ 설정이 백엔드와 동기화되었습니다.', settingsToStore);
+    return { success: true, settings: settingsToStore };
+  }
+  return { success: false, error: result.error };
+}
+
 async function fetchUserSettings() {
   if (!userSession.isUserAuthenticated()) {
     return { success: false, reason: "unauthenticated" };
@@ -687,4 +704,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
   // [추가] 설치 또는 업데이트 시 항상 알람 재설정
   resetAlarm();
+});
+
+// [추가] 탭 활성화 시 설정 동기화 (마이페이지 변경사항 반영)
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  console.log(`🔄 탭 활성화 감지 (tabId: ${activeInfo.tabId}). 설정 동기화를 시도합니다.`);
+  await syncSettingsFromBackend();
 });
