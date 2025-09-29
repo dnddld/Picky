@@ -658,7 +658,7 @@ async function resetAlarm() {
   if (isOn) {
     chrome.alarms.create(ALARM_NAME, {
       delayInMinutes: 0.5, // 처음엔 0.5분 뒤에 시작
-      periodInMinutes: interval
+      periodInMinutes: interval,
     });
     console.log(`✨ ${interval}분 간격으로 새 알람 설정 완료.`);
   } else {
